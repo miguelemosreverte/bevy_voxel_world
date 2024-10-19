@@ -1,4 +1,5 @@
 use bevy::{
+    app::AppExit,
     input::{keyboard::KeyCode, mouse::MouseMotion, ButtonInput},
     pbr::CascadeShadowConfigBuilder,
     prelude::*,
@@ -33,7 +34,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(VoxelWorldPlugin::with_config(MainWorld))
         .add_systems(Startup, (setup, grab_mouse))
-        .add_systems(Update, fly_camera)
+        .add_systems(Update, (fly_camera, exit_on_esc))
         .run();
 }
 
@@ -158,4 +159,13 @@ fn grab_mouse(mut windows: Query<&mut Window>) {
     let mut window = windows.single_mut();
     window.cursor.visible = false;
     window.cursor.grab_mode = CursorGrabMode::Locked;
+}
+
+fn exit_on_esc(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut app_exit_events: EventWriter<AppExit>,
+) {
+    if keyboard_input.just_pressed(KeyCode::Escape) {
+        app_exit_events.send(AppExit::default());
+    }
 }
