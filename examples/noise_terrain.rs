@@ -24,6 +24,29 @@ impl VoxelWorldConfig for MainWorld {
 }
 
 #[derive(Component)]
+struct WalkingCamera {
+    speed: f32,
+    sensitivity: f32,
+    gravity: f32,
+    jump_force: f32,
+    is_grounded: bool,
+    velocity: Vec3,
+}
+
+impl Default for WalkingCamera {
+    fn default() -> Self {
+        Self {
+            speed: 5.0,
+            sensitivity: 0.002,
+            gravity: -9.8,
+            jump_force: 5.0,
+            is_grounded: false,
+            velocity: Vec3::ZERO,
+        }
+    }
+}
+
+#[derive(Component)]
 struct FlyCamera {
     speed: f32,
     sensitivity: f32,
@@ -34,7 +57,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(VoxelWorldPlugin::with_config(MainWorld))
         .add_systems(Startup, (setup, grab_mouse))
-        .add_systems(Update, (fly_camera, exit_on_esc))
+        .add_systems(Update, (walking_camera, exit_on_esc))
         .run();
 }
 
@@ -45,10 +68,7 @@ fn setup(mut commands: Commands) {
             transform: Transform::from_xyz(-200.0, 180.0, -200.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
-        FlyCamera {
-            speed: 10.0,
-            sensitivity: 0.002,
-        },
+        WalkingCamera::default(),
         VoxelWorldCamera::<MainWorld>::default(),
     ));
 
@@ -112,6 +132,92 @@ fn get_voxel_fn() -> Box<dyn FnMut(IVec3) -> WorldVoxel + Send + Sync> {
             WorldVoxel::Air
         }
     })
+}
+
+fn walking_camera(
+    time: Res<Time>,
+    mut mouse_motion_events: EventReader<MouseMotion>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut query: Query<(&mut Transform, &mut WalkingCamera), With<Camera>>,
+    mut voxel_world: VoxelWorld<MainWorld>,
+) {
+    let (mut transform, mut camera) = query.single_mut();
+    // Handle mouse look
+    for ev in mouse_motion_events.read() {
+        let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
+        yaw -= ev.delta.x * camera.sensitivity;
+        pitch -= ev.delta.y * camera.sensitivity;
+        pitch = pitch.clamp(-1.54, 1.54); // Prevent camera from flipping
+        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+    }
+    // Handle keyboard input
+    let mut input = Vec3::ZERO;
+    if keyboard_input.pressed(KeyCode::KeyW) {
+        input += transform.forward().as_vec3();
+    }
+    if keyboard_input.pressed(KeyCode::KeyS) {
+        input -= transform.forward().as_vec3();
+    }
+    if keyboard_input.pressed(KeyCode::KeyA) {
+        input -= transform.right().as_vec3();
+    }
+    if keyboard_input.pressed(KeyCode::KeyD) {
+        input += transform.right().as_vec3();
+    }
+    // Remove vertical component for horizontal movement
+    input.y = 0.0;
+    input = input.normalize_or_zero();
+    // Apply horizontal movement
+    camera.velocity.x = input.x * camera.speed;
+    camera.velocity.z = input.z * camera.speed;
+    // Apply gravity
+    if !camera.is_grounded {
+        camera.velocity.y += camera.gravity * time.delta_seconds();
+    }
+    // Handle jumping
+    if keyboard_input.pressed(KeyCode::Space) && camera.is_grounded {
+        camera.velocity.y = camera.jump_force;
+        camera.is_grounded = false;
+    }
+    // Move the camera
+    let mut new_position = transform.translation + camera.velocity * time.delta_seconds();
+    // Collision detection
+    let feet_position = new_position - Vec3::new(0.0, 1.0, 0.0); // Assuming the camera is 2 units tall
+    let head_position = new_position + Vec3::new(0.0, 1.0, 0.0);
+    // Check for vertical collisions
+    if matches!(
+        voxel_world.get_voxel(feet_position.as_ivec3()),
+        WorldVoxel::Solid(_)
+    ) {
+        new_position.y = feet_position.y.ceil() + 1.0; // Place the camera just above the ground
+        camera.velocity.y = 0.0;
+        camera.is_grounded = true;
+    } else if matches!(
+        voxel_world.get_voxel(head_position.as_ivec3()),
+        WorldVoxel::Solid(_)
+    ) {
+        new_position.y = head_position.y.floor() - 1.0; // Place the camera just below the ceiling
+        camera.velocity.y = 0.0;
+    } else {
+        camera.is_grounded = false;
+    }
+    // Horizontal collision
+    let horizontal_movement =
+        Vec3::new(camera.velocity.x, 0.0, camera.velocity.z) * time.delta_seconds();
+    let check_positions = [
+        new_position + Vec3::new(0.3, 0.0, 0.3),
+        new_position + Vec3::new(0.3, 0.0, -0.3),
+        new_position + Vec3::new(-0.3, 0.0, 0.3),
+        new_position + Vec3::new(-0.3, 0.0, -0.3),
+    ];
+    for pos in check_positions.iter() {
+        if matches!(voxel_world.get_voxel(pos.as_ivec3()), WorldVoxel::Solid(_)) {
+            // If there's a collision, don't apply horizontal movement
+            new_position -= horizontal_movement;
+            break;
+        }
+    }
+    transform.translation = new_position;
 }
 
 fn fly_camera(
