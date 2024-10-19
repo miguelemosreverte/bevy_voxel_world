@@ -1,4 +1,11 @@
-use bevy::{pbr::CascadeShadowConfigBuilder, prelude::*, utils::HashMap};
+use bevy::{
+    input::{keyboard::KeyCode, mouse::MouseMotion, ButtonInput},
+    pbr::CascadeShadowConfigBuilder,
+    prelude::*,
+    utils::HashMap,
+    window::CursorGrabMode,
+};
+
 use bevy_voxel_world::prelude::*;
 use noise::{HybridMulti, NoiseFn, Perlin};
 
@@ -15,12 +22,18 @@ impl VoxelWorldConfig for MainWorld {
     }
 }
 
+#[derive(Component)]
+struct FlyCamera {
+    speed: f32,
+    sensitivity: f32,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(VoxelWorldPlugin::with_config(MainWorld))
-        .add_systems(Startup, setup)
-        .add_systems(Update, move_camera)
+        .add_systems(Startup, (setup, grab_mouse))
+        .add_systems(Update, fly_camera)
         .run();
 }
 
@@ -31,7 +44,10 @@ fn setup(mut commands: Commands) {
             transform: Transform::from_xyz(-200.0, 180.0, -200.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
-        // This tells bevy_voxel_world to use this cameras transform to calculate spawning area
+        FlyCamera {
+            speed: 10.0,
+            sensitivity: 0.002,
+        },
         VoxelWorldCamera::<MainWorld>::default(),
     ));
 
@@ -97,10 +113,49 @@ fn get_voxel_fn() -> Box<dyn FnMut(IVec3) -> WorldVoxel + Send + Sync> {
     })
 }
 
-fn move_camera(
+fn fly_camera(
     time: Res<Time>,
-    mut cam_transform: Query<&mut Transform, With<VoxelWorldCamera<MainWorld>>>,
+    mut mouse_motion_events: EventReader<MouseMotion>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut query: Query<(&mut Transform, &FlyCamera), With<Camera>>,
 ) {
-    cam_transform.single_mut().translation.x += time.delta_seconds() * 30.0;
-    cam_transform.single_mut().translation.z += time.delta_seconds() * 60.0;
+    let (mut transform, camera) = query.single_mut();
+
+    // Handle mouse look
+    for ev in mouse_motion_events.read() {
+        let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
+        yaw -= ev.delta.x * camera.sensitivity;
+        pitch -= ev.delta.y * camera.sensitivity;
+        pitch = pitch.clamp(-1.54, 1.54); // Prevent camera from flipping
+        transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
+    }
+
+    // Handle keyboard input
+    let mut velocity = Vec3::ZERO;
+    if keyboard_input.pressed(KeyCode::KeyW) {
+        velocity += transform.forward().as_vec3();
+    }
+    if keyboard_input.pressed(KeyCode::KeyS) {
+        velocity -= transform.forward().as_vec3();
+    }
+    if keyboard_input.pressed(KeyCode::KeyA) {
+        velocity -= transform.right().as_vec3();
+    }
+    if keyboard_input.pressed(KeyCode::KeyD) {
+        velocity += transform.right().as_vec3();
+    }
+    if keyboard_input.pressed(KeyCode::Space) {
+        velocity += Vec3::Y;
+    }
+    if keyboard_input.pressed(KeyCode::ShiftLeft) {
+        velocity -= Vec3::Y;
+    }
+
+    transform.translation += velocity * camera.speed * time.delta_seconds();
+}
+
+fn grab_mouse(mut windows: Query<&mut Window>) {
+    let mut window = windows.single_mut();
+    window.cursor.visible = false;
+    window.cursor.grab_mode = CursorGrabMode::Locked;
 }
