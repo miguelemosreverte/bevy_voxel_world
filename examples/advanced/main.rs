@@ -1,3 +1,4 @@
+// main.rs
 use bevy::prelude::*;
 use bevy_voxel_world::prelude::*;
 
@@ -10,32 +11,75 @@ use bevy::{
     window::CursorGrabMode,
 };
 
+// Import your voxel and world configurations
 mod camera;
 mod voxel;
 mod world;
 
+use camera::{exit_on_esc, grab_mouse, walking_camera, WalkingCamera};
+use world::{HighDetailWorld, LowDetailWorld};
+
+// Define chunk stats text identifiers
+#[derive(Component)]
+enum ChunkStatsText {
+    HighDetail,
+    LowDetail,
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(VoxelWorldPlugin::with_config(world::MainWorld::default()))
-        .add_systems(Startup, (setup, camera::grab_mouse))
-        .add_systems(Update, (camera::walking_camera, camera::exit_on_esc))
-        .add_systems(Update, update_camera_position)
+        // Add the High-Detail Voxel World
+        .add_plugins(VoxelWorldPlugin::<HighDetailWorld>::with_config(
+            HighDetailWorld::default(),
+        ))
+        // Add the Low-Detail Voxel World
+        .add_plugins(VoxelWorldPlugin::<LowDetailWorld>::with_config(
+            LowDetailWorld::default(),
+        ))
+        .add_systems(Startup, (setup, grab_mouse))
+        //.add_startup_system(setup_ui)
+        .add_systems(
+            Update,
+            (
+                walking_camera,
+                exit_on_esc,
+                // Update camera positions for both worlds
+                //update_camera_position::<HighDetailWorld>,
+                //update_camera_position::<LowDetailWorld>,
+                // Handle spawning and despawning
+                //Internals::<HighDetailWorld>::spawn_chunks
+                //    .before(Internals::<LowDetailWorld>::spawn_chunks),
+                //Internals::<HighDetailWorld>::retire_chunks,
+                //Internals::<LowDetailWorld>::spawn_chunks,
+                //Internals::<LowDetailWorld>::retire_chunks,
+                // Update UI stats
+                //update_chunk_stats::<HighDetailWorld>,
+                //update_chunk_stats::<LowDetailWorld>,
+                // Debug Visualization
+                //Internals::<HighDetailWorld>::draw_chunk_bounding_boxes,
+                // Internals::<LowDetailWorld>::draw_spawn_ranges, // Optional
+            ),
+        )
         .run();
 }
 
-fn setup(mut commands: Commands, mut clear_color: ResMut<ClearColor>) {
-    *clear_color = ClearColor(Color::rgb(0.5, 0.8, 1.0));
+fn setup(mut commands: Commands) {
+    // Set background color
+    commands.insert_resource(ClearColor(Color::rgb(0.5, 0.8, 1.0)));
 
+    // Spawn Camera for High-Detail and Low-Detail Worlds
     commands.spawn((
         Camera3dBundle {
             transform: Transform::from_xyz(0.0, 160.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
-        camera::WalkingCamera::default(),
-        VoxelWorldCamera::<world::MainWorld>::default(),
+        WalkingCamera::default(),
+        VoxelWorldCamera::<HighDetailWorld>::default(),
+        VoxelWorldCamera::<LowDetailWorld>::default(),
     ));
 
+    // Spawn Directional Light
     let cascade_shadow_config = CascadeShadowConfigBuilder::default().build();
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
@@ -49,18 +93,9 @@ fn setup(mut commands: Commands, mut clear_color: ResMut<ClearColor>) {
         ..default()
     });
 
+    // Insert Ambient Light
     commands.insert_resource(AmbientLight {
         color: Color::srgb(0.98, 0.95, 0.82),
         brightness: 100.0,
     });
-}
-
-fn update_camera_position(
-    camera_query: Query<&Transform, With<Camera>>,
-    mut main_world: ResMut<world::MainWorld>,
-) {
-    if let Ok(camera_transform) = camera_query.get_single() {
-        let mut camera_pos = main_world.camera_position.lock().unwrap();
-        *camera_pos = camera_transform.translation;
-    }
 }

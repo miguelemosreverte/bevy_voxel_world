@@ -38,6 +38,16 @@ pub trait VoxelWorldConfig: Resource + Default + Clone {
         10
     }
 
+    /// Minimum distance in chunks to start spawning chunks
+    fn spawning_min_distance(&self) -> u32 {
+        0
+    }
+
+    /// Maximum distance in chunks to spawn chunks around the camera
+    fn spawning_max_distance(&self) -> u32 {
+        self.spawning_distance()
+    }
+
     /// Strategy for despawning chunks
     fn chunk_despawn_strategy(&self) -> ChunkDespawnStrategy {
         ChunkDespawnStrategy::default()

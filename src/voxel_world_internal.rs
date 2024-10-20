@@ -105,14 +105,17 @@ where
         let (camera, cam_gtf) = camera_info.single();
         let cam_pos = cam_gtf.translation().as_ivec3();
 
-        let spawning_distance = configuration.spawning_distance() as i32;
-        let spawning_distance_squared = spawning_distance.pow(2);
+        // Define spawning distances
+        let spawning_min_distance = configuration.spawning_min_distance() as i32;
+        let spawning_min_distance_squared = spawning_min_distance.pow(2);
+        let spawning_max_distance = configuration.spawning_max_distance() as i32;
+        let spawning_max_distance_squared = spawning_max_distance.pow(2);
 
         let viewport_size = camera.physical_viewport_size().unwrap_or_default();
 
         let mut visited = HashSet::new();
         let mut chunks_deque =
-            VecDeque::with_capacity(configuration.spawning_rays() * spawning_distance as usize);
+            VecDeque::with_capacity(configuration.spawning_rays() * spawning_max_distance as usize);
 
         let chunk_map_read_lock = chunk_map.get_read_lock();
 
@@ -124,7 +127,7 @@ where
                 };
                 let mut current = ray.origin;
                 let mut t = 0.0;
-                while t < (spawning_distance * CHUNK_SIZE_I) as f32 {
+                while t < (spawning_max_distance * CHUNK_SIZE_I) as f32 {
                     let chunk_pos = current.as_ivec3() / CHUNK_SIZE_I;
                     if let Some(chunk) = ChunkMap::<C>::get(&chunk_pos, &chunk_map_read_lock) {
                         if chunk.is_full {
@@ -140,11 +143,13 @@ where
             };
 
         // Each frame we pick some random points on the screen
-        let m = configuration.spawning_ray_margin();
+        let margin = configuration.spawning_ray_margin();
         for _ in 0..configuration.spawning_rays() {
             let random_point_in_viewport = {
-                let x = rand::random::<f32>() * (viewport_size.x + m * 2) as f32 - m as f32;
-                let y = rand::random::<f32>() * (viewport_size.y + m * 2) as f32 - m as f32;
+                let x =
+                    rand::random::<f32>() * (viewport_size.x + margin * 2) as f32 - margin as f32;
+                let y =
+                    rand::random::<f32>() * (viewport_size.y + margin * 2) as f32 - margin as f32;
                 Vec2::new(x, y)
             };
 
@@ -172,7 +177,12 @@ where
             }
             visited.insert(chunk_position);
 
-            if chunk_position.distance_squared(chunk_at_camera) > spawning_distance_squared {
+            let dist_squared = chunk_position.distance_squared(chunk_at_camera);
+
+            // Check if chunk is within the spawning distance range
+            if dist_squared < spawning_min_distance_squared
+                || dist_squared > spawning_max_distance_squared
+            {
                 continue;
             }
 
@@ -221,10 +231,18 @@ where
         camera_info: CameraInfo<C>,
         mut ev_chunk_will_despawn: EventWriter<ChunkWillDespawn<C>>,
     ) {
-        let spawning_distance = configuration.spawning_distance() as i32;
-        let spawning_distance_squared = spawning_distance.pow(2);
+        let spawning_max_distance = configuration.spawning_max_distance() as i32;
+        let spawning_max_distance_squared = spawning_max_distance.pow(2);
+        let spawning_min_distance = configuration.spawning_min_distance() as i32;
+        let spawning_min_distance_squared = spawning_min_distance.pow(2);
 
-        let (_, cam_gtf) = camera_info.get_single().unwrap();
+        let (_, cam_gtf) = match camera_info.get_single() {
+            Ok(info) => info,
+            Err(_) => {
+                warn!("No camera found with VoxelWorldCamera component.");
+                return;
+            }
+        };
         let cam_pos = cam_gtf.translation().as_ivec3();
 
         let chunk_at_camera = cam_pos / CHUNK_SIZE_I;
@@ -232,21 +250,33 @@ where
         let chunks_to_remove = {
             let mut remove = Vec::with_capacity(1000);
             for (chunk, view_visibility) in all_chunks.iter() {
-                let should_be_culled = {
-                    match configuration.chunk_despawn_strategy() {
-                        ChunkDespawnStrategy::FarAway => false,
-                        ChunkDespawnStrategy::FarAwayOrOutOfView => {
-                            if let Some(visibility) = view_visibility {
-                                !visibility.get()
-                            } else {
-                                false
-                            }
+                let dist_squared = chunk.position.distance_squared(chunk_at_camera);
+
+                // Determine if the chunk should be culled based on despawn strategy
+                let should_be_culled = match configuration.chunk_despawn_strategy() {
+                    ChunkDespawnStrategy::FarAway => false,
+                    ChunkDespawnStrategy::FarAwayOrOutOfView => {
+                        if let Some(visibility) = view_visibility {
+                            !visibility.get()
+                        } else {
+                            false
                         }
                     }
                 };
-                let dist_squared = chunk.position.distance_squared(chunk_at_camera);
-                if should_be_culled || dist_squared > spawning_distance_squared + 1 {
+
+                // Despawn if:
+                // 1. Should be culled based on despawn strategy.
+                // 2. Outside the spawning_max_distance.
+                // 3. Inside the spawning_min_distance (if desired).
+                if should_be_culled
+                    || dist_squared > spawning_max_distance_squared + 1
+                    || (dist_squared < spawning_min_distance_squared && spawning_min_distance > 0)
+                {
                     remove.push(chunk);
+                    //info!(
+                    //    "Despawning chunk at position: {:?}, Distance squared: {}",
+                    //  chunk.position, dist_squared
+                    //);
                 }
             }
             remove
@@ -254,7 +284,6 @@ where
 
         for chunk in chunks_to_remove {
             commands.entity(chunk.entity).try_insert(NeedsDespawn);
-
             ev_chunk_will_despawn.send(ChunkWillDespawn::<C>::new(chunk.position, chunk.entity));
         }
     }

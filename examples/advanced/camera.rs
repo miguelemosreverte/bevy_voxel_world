@@ -8,7 +8,7 @@ use bevy::{
 };
 use std::sync::{Arc, Mutex};
 
-use crate::world::MainWorld;
+use crate::world::HighDetailWorld;
 use bevy::prelude::*;
 use bevy_voxel_world::prelude::*;
 use bevy_voxel_world::prelude::*;
@@ -27,7 +27,7 @@ pub struct WalkingCamera {
 impl Default for WalkingCamera {
     fn default() -> Self {
         Self {
-            speed: 5.0,
+            speed: 50.0,
             sensitivity: 0.002,
             gravity: -9.8,
             jump_force: 5.0,
@@ -42,7 +42,7 @@ pub fn walking_camera(
     mut mouse_motion_events: EventReader<MouseMotion>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&mut Transform, &mut WalkingCamera), With<Camera>>,
-    mut voxel_world: VoxelWorld<MainWorld>,
+    mut voxel_world: VoxelWorld<HighDetailWorld>,
 ) {
     let (mut transform, mut camera) = query.single_mut();
     // Handle mouse look
@@ -124,7 +124,7 @@ pub fn walking_camera(
 }
 
 #[derive(Component)]
-struct FlyCamera {
+pub struct FlyCamera {
     speed: f32,
     sensitivity: f32,
 }
