@@ -69,11 +69,24 @@ fn get_voxel_fn(
             }
         };
 
-        // Step 1: Render the canopy directly above the tree trunk for 3 blocks
-        if let Some(canopy_base) = canopy_positions.get(&(pos.x, pos.z)) {
-            // Place canopy blocks directly above the trunk
-            if y_i32 >= *canopy_base && y_i32 <= *canopy_base + 3 {
-                return WorldVoxel::Solid(1); // Canopy material (greenery)
+        // Step 1: Check for canopy positions around the tree trunk
+        let canopy_offsets = vec![
+            (0, 0),   // Directly above the trunk
+            (1, 0),   // To the east
+            (-1, 0),  // To the west
+            (0, 1),   // To the north
+            (0, -1),  // To the south
+            (1, 1),   // North-east
+            (-1, 1),  // North-west
+            (1, -1),  // South-east
+            (-1, -1), // South-west
+        ];
+
+        for (dx, dz) in canopy_offsets.iter() {
+            if let Some(canopy_base) = canopy_positions.get(&(pos.x + dx, pos.z + dz)) {
+                if y_i32 >= *canopy_base && y_i32 <= *canopy_base + 3 {
+                    return WorldVoxel::Solid(1); // Canopy material (greenery)
+                }
             }
         }
 
