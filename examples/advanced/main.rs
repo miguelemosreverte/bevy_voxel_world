@@ -17,7 +17,7 @@ mod voxel;
 mod world;
 
 use camera::{exit_on_esc, grab_mouse, walking_camera, WalkingCamera};
-use world::{HighDetailWorld, LowDetailWorld};
+use world::*;
 
 // Define chunk stats text identifiers
 #[derive(Component)]
@@ -37,6 +37,13 @@ fn main() {
         .add_plugins(VoxelWorldPlugin::<LowDetailWorld>::with_config(
             LowDetailWorld::default(),
         ))
+        .add_plugins(VoxelWorldPlugin::<LowDetailWorld>::with_config(
+            LowDetailWorld::default().with_updates(|world| {
+                world.scale = 2.0;
+                world.height_scale = 0.1;
+                world.height_minus = 1.0;
+                })
+        )
         .add_systems(Startup, (setup, grab_mouse))
         //.add_startup_system(setup_ui)
         .add_systems(

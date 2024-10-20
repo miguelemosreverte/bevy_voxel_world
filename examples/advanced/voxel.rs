@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub fn get_voxel_fn(
     scale: f64,
     height_scale: f64,
+    height_minus: f64
 ) -> Box<dyn FnMut(IVec3, u8) -> WorldVoxel + Send + Sync> {
     let mut noise = HybridMulti::<Perlin>::new(1234);
     noise.octaves = 5;
@@ -29,7 +30,7 @@ pub fn get_voxel_fn(
         let ground_height = match cache.get(&(pos.x, pos.z)) {
             Some(sample) => *sample,
             None => {
-                let sample = noise.get([scaled_x, scaled_z]) * 50.0 * height_scale;
+                let sample = noise.get([scaled_x, scaled_z]) * 50.0 * height_scale - height_minus;
                 cache.insert((pos.x, pos.z), sample);
                 sample
             }

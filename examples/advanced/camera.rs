@@ -30,7 +30,7 @@ impl Default for WalkingCamera {
             speed: 50.0,
             sensitivity: 0.002,
             gravity: -9.8,
-            jump_force: 5.0,
+            jump_force: 15.0,
             is_grounded: false,
             velocity: Vec3::ZERO,
         }

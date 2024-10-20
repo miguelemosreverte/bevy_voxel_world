@@ -91,6 +91,7 @@ where
     }
 
     /// Find and spawn chunks in need of spawning
+    /// Find and spawn chunks in need of spawning
     pub fn spawn_chunks(
         mut commands: Commands,
         mut chunk_map_insert_buffer: ResMut<ChunkMapInsertBuffer<C>>,
@@ -127,7 +128,7 @@ where
                 };
                 let mut current = ray.origin;
                 let mut t = 0.0;
-                while t < (spawning_max_distance * CHUNK_SIZE_I) as f32 {
+                while t < (spawning_max_distance * 3 * CHUNK_SIZE_I) as f32 {
                     let chunk_pos = current.as_ivec3() / CHUNK_SIZE_I;
                     if let Some(chunk) = ChunkMap::<C>::get(&chunk_pos, &chunk_map_read_lock) {
                         if chunk.is_full {
@@ -204,21 +205,27 @@ where
                 continue;
             }
 
-            if configuration.chunk_spawn_strategy() != ChunkSpawnStrategy::Close {
-                continue;
-            }
-
-            // If we get here, we queue the neighbors
-            for x in -1..=1 {
-                for y in -1..=1 {
-                    for z in -1..=1 {
-                        let queue_pos = chunk_position + IVec3::new(x, y, z);
-                        if queue_pos == chunk_position {
-                            continue;
+            // Handle different ChunkSpawnStrategy cases
+            match configuration.chunk_spawn_strategy() {
+                ChunkSpawnStrategy::Close => {
+                    // Queue neighbors
+                    for x in -1..=1 {
+                        for y in -1..=1 {
+                            for z in -1..=1 {
+                                let queue_pos = chunk_position + IVec3::new(x, y, z);
+                                if queue_pos == chunk_position {
+                                    continue;
+                                }
+                                chunks_deque.push_back(queue_pos);
+                            }
                         }
-                        chunks_deque.push_back(queue_pos);
                     }
                 }
+                ChunkSpawnStrategy::Always => {
+                    // For Always strategy, we don't need to do anything extra here
+                    // as we're already spawning all chunks within the distance range
+                } // Add other strategies here if needed
+                ChunkSpawnStrategy::CloseAndInView => {}
             }
         }
     }

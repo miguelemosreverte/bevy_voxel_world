@@ -29,6 +29,8 @@ pub enum ChunkSpawnStrategy {
     /// `FarAway`. If this strategy is used a flood fill will be used to find unspawned chunks
     /// and therefore it might make sense to lower the `spawning_rays` option.
     Close,
+
+    Always,
 }
 
 /// `bevy_voxel_world` configuation structs need to implement this trait
