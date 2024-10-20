@@ -19,8 +19,8 @@ struct MainWorld {
 impl Default for MainWorld {
     fn default() -> Self {
         Self {
-            scale: 1.0,        // Default horizontal scale
-            height_scale: 1.0, // Default height scale
+            scale: 2.0,        // Default horizontal scale
+            height_scale: 0.5, // Default height scale
         }
     }
 }
@@ -149,6 +149,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(VoxelWorldPlugin::with_config(MainWorld::default()))
         .add_systems(Startup, (setup, grab_mouse))
+        //.add_systems(Update, fly_camera)
         .add_systems(Update, (walking_camera, exit_on_esc))
         .run();
 }
@@ -157,7 +158,7 @@ fn setup(mut commands: Commands) {
     // camera
     commands.spawn((
         Camera3dBundle {
-            transform: Transform::from_xyz(-200.0, 180.0, -200.0).looking_at(Vec3::ZERO, Vec3::Y),
+            transform: Transform::from_xyz(0.0, 180.0, -200.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
         WalkingCamera::default(),
