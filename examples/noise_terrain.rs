@@ -10,17 +10,96 @@ use bevy::{
 use bevy_voxel_world::prelude::*;
 use noise::{HybridMulti, NoiseFn, Perlin};
 
-#[derive(Resource, Clone, Default)]
-struct MainWorld;
+#[derive(Resource, Clone)]
+struct MainWorld {
+    scale: f64,        // Horizontal scale
+    height_scale: f64, // Vertical/height scale
+}
+
+impl Default for MainWorld {
+    fn default() -> Self {
+        Self {
+            scale: 1.0,        // Default horizontal scale
+            height_scale: 1.0, // Default height scale
+        }
+    }
+}
 
 impl VoxelWorldConfig for MainWorld {
     fn spawning_distance(&self) -> u32 {
-        25
+        (25.0 * self.scale) as u32 // Adjust spawning distance based on scale
     }
 
     fn voxel_lookup_delegate(&self) -> VoxelLookupDelegate {
-        Box::new(move |_chunk_pos| get_voxel_fn())
+        let scale = self.scale;
+        let height_scale = self.height_scale; // Capture both scales
+        Box::new(move |_chunk_pos| get_voxel_fn(scale, height_scale))
     }
+}
+
+fn get_voxel_fn(
+    scale: f64,
+    height_scale: f64,
+) -> Box<dyn FnMut(IVec3) -> WorldVoxel + Send + Sync> {
+    let mut noise = HybridMulti::<Perlin>::new(1234);
+    noise.octaves = 5;
+    noise.frequency = 1.1;
+    noise.lacunarity = 2.8;
+    noise.persistence = 0.4;
+
+    let mut cache = HashMap::<(i32, i32), f64>::new();
+    let mut canopy_positions = HashMap::<(i32, i32), i32>::new(); // Track positions for canopies
+
+    Box::new(move |pos: IVec3| {
+        if pos.y < 1 {
+            return WorldVoxel::Solid(3); // Sea level voxel
+        }
+
+        let [x, y, z] = pos.as_dvec3().to_array();
+        let scaled_x = x / (1000.0 / scale);
+        let scaled_z = z / (1000.0 / scale);
+        let y_i32 = y as i32; // Cast y to i32 for comparison
+
+        let ground_height = match cache.get(&(pos.x, pos.z)) {
+            Some(sample) => *sample,
+            None => {
+                let sample = noise.get([scaled_x, scaled_z]) * 50.0 * height_scale;
+                cache.insert((pos.x, pos.z), sample);
+                sample
+            }
+        };
+
+        // Step 1: Render the canopy directly above the tree trunk for 3 blocks
+        if let Some(canopy_base) = canopy_positions.get(&(pos.x, pos.z)) {
+            // Place canopy blocks directly above the trunk
+            if y_i32 >= *canopy_base && y_i32 <= *canopy_base + 3 {
+                return WorldVoxel::Solid(1); // Canopy material (greenery)
+            }
+        }
+
+        // Step 2: Place tree trunks and record positions for canopy placement
+        if y < ground_height {
+            WorldVoxel::Solid(0) // Ground material
+        } else if y < ground_height + 5.0 && ground_height > 5.0 && y > 5.0 {
+            // Ensure trees spawn with at least 5 blocks of distance between each other
+            if (pos.x % 5 == 0) && (pos.z % 5 == 0) {
+                let tree_height = 5; // Fixed tree height for trunk
+                let tree_top_height = ground_height + tree_height as f64;
+
+                if y < tree_top_height {
+                    // Record this position as the top of the tree trunk for canopy placement
+                    canopy_positions.insert((pos.x, pos.z), y_i32 + 1); // Canopy starts at tree top + 1
+                    WorldVoxel::Solid(2) // Tree trunk material
+                } else {
+                    WorldVoxel::Air
+                }
+            } else {
+                WorldVoxel::Air
+            }
+        } else {
+            WorldVoxel::Air
+        }
+    })
 }
 
 #[derive(Component)]
@@ -55,7 +134,7 @@ struct FlyCamera {
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(VoxelWorldPlugin::with_config(MainWorld))
+        .add_plugins(VoxelWorldPlugin::with_config(MainWorld::default()))
         .add_systems(Startup, (setup, grab_mouse))
         .add_systems(Update, (walking_camera, exit_on_esc))
         .run();
@@ -91,47 +170,6 @@ fn setup(mut commands: Commands) {
         color: Color::srgb(0.98, 0.95, 0.82),
         brightness: 100.0,
     });
-}
-
-fn get_voxel_fn() -> Box<dyn FnMut(IVec3) -> WorldVoxel + Send + Sync> {
-    // Set up some noise to use as the terrain height map
-    let mut noise = HybridMulti::<Perlin>::new(1234);
-    noise.octaves = 5;
-    noise.frequency = 1.1;
-    noise.lacunarity = 2.8;
-    noise.persistence = 0.4;
-
-    // We use this to cache the noise value for each y column so we only need
-    // to calculate it once per x/z coordinate
-    let mut cache = HashMap::<(i32, i32), f64>::new();
-
-    // Then we return this boxed closure that captures the noise and the cache
-    // This will get sent off to a separate thread for meshing by bevy_voxel_world
-    Box::new(move |pos: IVec3| {
-        // Sea level
-        if pos.y < 1 {
-            return WorldVoxel::Solid(3);
-        }
-
-        let [x, y, z] = pos.as_dvec3().to_array();
-
-        // If y is less than the noise sample, we will set the voxel to solid
-        let is_ground = y < match cache.get(&(pos.x, pos.z)) {
-            Some(sample) => *sample,
-            None => {
-                let sample = noise.get([x / 1000.0, z / 1000.0]) * 50.0;
-                cache.insert((pos.x, pos.z), sample);
-                sample
-            }
-        };
-
-        if is_ground {
-            // Solid voxel of material type 0
-            WorldVoxel::Solid(0)
-        } else {
-            WorldVoxel::Air
-        }
-    })
 }
 
 fn walking_camera(
