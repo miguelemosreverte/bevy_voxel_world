@@ -165,7 +165,10 @@ fn main() {
         .run();
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, mut clear_color: ResMut<ClearColor>) {
+    // Set the sky color to a brighter blue
+    *clear_color = ClearColor(Color::rgb(0.5, 0.8, 1.0)); // Light blue sky
+
     // camera
     commands.spawn((
         Camera3dBundle {
