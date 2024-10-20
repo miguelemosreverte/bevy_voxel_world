@@ -107,9 +107,22 @@ where
         let cam_pos = cam_gtf.translation().as_ivec3();
 
         // Define spawning distances
-        let spawning_min_distance = configuration.spawning_min_distance() as i32;
+        let spawning_max_distance = match configuration.chunk_despawn_strategy() {
+            ChunkDespawnStrategy::Distance(distance) => distance as i32,
+            ChunkDespawnStrategy::FarAway | ChunkDespawnStrategy::FarAwayOrOutOfView => {
+                configuration.spawning_distance() as i32
+            }
+        };
+
+        let spawning_min_distance = match configuration.chunk_spawn_strategy() {
+            ChunkSpawnStrategy::Always => 0 as i32,
+            ChunkSpawnStrategy::Distance(distance) => distance as i32,
+            ChunkSpawnStrategy::Close | ChunkSpawnStrategy::CloseAndInView => {
+                configuration.spawning_distance() as i32
+            }
+        };
+
         let spawning_min_distance_squared = spawning_min_distance.pow(2);
-        let spawning_max_distance = configuration.spawning_max_distance() as i32;
         let spawning_max_distance_squared = spawning_max_distance.pow(2);
 
         let viewport_size = camera.physical_viewport_size().unwrap_or_default();
@@ -128,7 +141,7 @@ where
                 };
                 let mut current = ray.origin;
                 let mut t = 0.0;
-                while t < (spawning_max_distance * 3 * CHUNK_SIZE_I) as f32 {
+                while t < (spawning_max_distance * CHUNK_SIZE_I) as f32 {
                     let chunk_pos = current.as_ivec3() / CHUNK_SIZE_I;
                     if let Some(chunk) = ChunkMap::<C>::get(&chunk_pos, &chunk_map_read_lock) {
                         if chunk.is_full {
@@ -226,6 +239,7 @@ where
                     // as we're already spawning all chunks within the distance range
                 } // Add other strategies here if needed
                 ChunkSpawnStrategy::CloseAndInView => {}
+                ChunkSpawnStrategy::Distance(_) => {}
             }
         }
     }
@@ -261,6 +275,7 @@ where
 
                 // Determine if the chunk should be culled based on despawn strategy
                 let should_be_culled = match configuration.chunk_despawn_strategy() {
+                    ChunkDespawnStrategy::Distance(_) => false,
                     ChunkDespawnStrategy::FarAway => false,
                     ChunkDespawnStrategy::FarAwayOrOutOfView => {
                         if let Some(visibility) = view_visibility {

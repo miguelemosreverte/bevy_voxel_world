@@ -15,6 +15,10 @@ pub enum ChunkDespawnStrategy {
 
     /// Only despawn chunks that are further than `spawning_distance` away from the camera.
     FarAway,
+    
+    /// Despawn chunks that are further than the specified distance (in chunks) away from the camera.
+    Distance(u32),
+
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -31,6 +35,10 @@ pub enum ChunkSpawnStrategy {
     Close,
 
     Always,
+    
+    
+    /// Spawn chunks that are further than the specified distance (in chunks) away from the camera.
+    Distance(u32),
 }
 
 /// `bevy_voxel_world` configuation structs need to implement this trait

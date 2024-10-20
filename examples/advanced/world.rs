@@ -7,18 +7,14 @@ use std::sync::{Arc, Mutex};
 pub struct HighDetailWorld {
     pub scale: f64,
     pub height_scale: f64,
-    pub camera_position: Arc<Mutex<Vec3>>,
 }
 
-impl Default for HighDetailWorld {
-    fn default() -> Self {
-        Self {
-            scale: 1.0, // Larger scale for higher detail
-            height_scale: 0.5,
-            camera_position: Arc::new(Mutex::new(Vec3::ZERO)),
-        }
+impl HighDetailWorld {
+    pub const fn new() -> Self {
+        Self
     }
 }
+
 
 impl VoxelWorldConfig for HighDetailWorld {
     /// Minimum distance in chunks to start spawning high-detail chunks
@@ -64,7 +60,6 @@ pub struct LowDetailWorld {
     pub scale: f64,
     pub height_scale: f64,
     pub height_minus: f64,
-    pub camera_position: Arc<Mutex<Vec3>>,
 }
 
 impl LowDetailWorld {
@@ -74,13 +69,12 @@ impl LowDetailWorld {
     }
 }
 
-impl Default for LowDetailWorld {
+impl const Default for LowDetailWorld {
     fn default() -> Self {
         Self {
             scale: 2.0, // Bigger scale for lower detail
             height_scale: 0.1,
             height_minus: 1.0,
-            camera_position: Arc::new(Mutex::new(Vec3::ZERO)),
         }
     }
 }
