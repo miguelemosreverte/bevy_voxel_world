@@ -35,6 +35,17 @@ impl VoxelWorldConfig for MainWorld {
         let height_scale = self.height_scale; // Capture both scales
         Box::new(move |_chunk_pos| get_voxel_fn(scale, height_scale))
     }
+
+    /// Strategy for despawning chunks
+    fn chunk_despawn_strategy(&self) -> ChunkDespawnStrategy {
+        ChunkDespawnStrategy::FarAway
+    }
+
+    /// Strategy for spawning chunks
+    /// This is only used if the despawn strategy is `FarAway`
+    fn chunk_spawn_strategy(&self) -> ChunkSpawnStrategy {
+        ChunkSpawnStrategy::CloseAndInView
+    }
 }
 
 fn get_voxel_fn(
@@ -158,7 +169,7 @@ fn setup(mut commands: Commands) {
     // camera
     commands.spawn((
         Camera3dBundle {
-            transform: Transform::from_xyz(0.0, 180.0, -200.0).looking_at(Vec3::ZERO, Vec3::Y),
+            transform: Transform::from_xyz(0.0, 160.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
         WalkingCamera::default(),
