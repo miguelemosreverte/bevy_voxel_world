@@ -6,7 +6,7 @@ use std::collections::HashMap;
 pub fn get_voxel_fn(
     scale: f64,
     height_scale: f64,
-    height_minus: f64
+    height_minus: f64,
 ) -> Box<dyn FnMut(IVec3, u8) -> WorldVoxel + Send + Sync> {
     let mut noise = HybridMulti::<Perlin>::new(1234);
     noise.octaves = 5;
@@ -17,7 +17,7 @@ pub fn get_voxel_fn(
     let mut cache = HashMap::<(i32, i32), f64>::new();
     let mut canopy_positions = HashMap::<(i32, i32), i32>::new(); // Track positions for canopies
 
-    Box::new(move |pos: IVec3, lod_level: u8| {
+    Box::new(move |pos: IVec3, _lod_level: u8| {
         if pos.y < 1 {
             return WorldVoxel::Solid(3); // Sea level voxel
         }

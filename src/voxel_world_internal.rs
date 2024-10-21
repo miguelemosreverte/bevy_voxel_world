@@ -91,7 +91,6 @@ where
     }
 
     /// Find and spawn chunks in need of spawning
-    /// Find and spawn chunks in need of spawning
     pub fn spawn_chunks(
         mut commands: Commands,
         mut chunk_map_insert_buffer: ResMut<ChunkMapInsertBuffer<C>>,
@@ -107,23 +106,8 @@ where
         let cam_pos = cam_gtf.translation().as_ivec3();
 
         // Define spawning distances
-        let spawning_max_distance = match configuration.chunk_despawn_strategy() {
-            ChunkDespawnStrategy::Distance(distance) => distance as i32,
-            ChunkDespawnStrategy::FarAway | ChunkDespawnStrategy::FarAwayOrOutOfView => {
-                configuration.spawning_distance() as i32
-            }
-        };
-
-        let spawning_min_distance = match configuration.chunk_spawn_strategy() {
-            ChunkSpawnStrategy::Always => 0 as i32,
-            ChunkSpawnStrategy::Distance(distance) => distance as i32,
-            ChunkSpawnStrategy::Close | ChunkSpawnStrategy::CloseAndInView => {
-                configuration.spawning_distance() as i32
-            }
-        };
-
-        let spawning_min_distance_squared = spawning_min_distance.pow(2);
-        let spawning_max_distance_squared = spawning_max_distance.pow(2);
+        let spawning_min_distance = configuration.spawning_min_distance() as i32;
+        let spawning_max_distance = configuration.spawning_max_distance() as i32;
 
         let viewport_size = camera.physical_viewport_size().unwrap_or_default();
 
@@ -141,7 +125,8 @@ where
                 };
                 let mut current = ray.origin;
                 let mut t = 0.0;
-                while t < (spawning_max_distance * CHUNK_SIZE_I) as f32 {
+                while t < (spawning_max_distance * CHUNK_SIZE_I * 20) as f32 {
+                    // HACK REMOVE THE 20
                     let chunk_pos = current.as_ivec3() / CHUNK_SIZE_I;
                     if let Some(chunk) = ChunkMap::<C>::get(&chunk_pos, &chunk_map_read_lock) {
                         if chunk.is_full {
@@ -191,12 +176,17 @@ where
             }
             visited.insert(chunk_position);
 
-            let dist_squared = chunk_position.distance_squared(chunk_at_camera);
+            let chunk_position = chunk_position;
+            // Calculate the Chebyshev distance between the chunk and the camera
+            let dist = (chunk_position - chunk_at_camera).abs();
+            let chebyshev_dist = dist.x.max(dist.y).max(dist.z);
 
             // Check if chunk is within the spawning distance range
-            if dist_squared < spawning_min_distance_squared
-                || dist_squared > spawning_max_distance_squared
-            {
+            let chebyshev_approves =
+                chebyshev_dist < spawning_min_distance || chebyshev_dist > spawning_max_distance;
+
+            // Check if chunk is within the spawning distance range
+            if chebyshev_approves {
                 continue;
             }
 
@@ -218,28 +208,21 @@ where
                 continue;
             }
 
-            // Handle different ChunkSpawnStrategy cases
-            match configuration.chunk_spawn_strategy() {
-                ChunkSpawnStrategy::Close => {
-                    // Queue neighbors
-                    for x in -1..=1 {
-                        for y in -1..=1 {
-                            for z in -1..=1 {
-                                let queue_pos = chunk_position + IVec3::new(x, y, z);
-                                if queue_pos == chunk_position {
-                                    continue;
-                                }
-                                chunks_deque.push_back(queue_pos);
-                            }
+            if configuration.chunk_spawn_strategy() != ChunkSpawnStrategy::Close {
+                continue;
+            }
+
+            // If we get here, we queue the neighbors
+            for x in -1..=1 {
+                for y in -1..=1 {
+                    for z in -1..=1 {
+                        let queue_pos = chunk_position + IVec3::new(x, y, z);
+                        if queue_pos == chunk_position {
+                            continue;
                         }
+                        chunks_deque.push_back(queue_pos);
                     }
                 }
-                ChunkSpawnStrategy::Always => {
-                    // For Always strategy, we don't need to do anything extra here
-                    // as we're already spawning all chunks within the distance range
-                } // Add other strategies here if needed
-                ChunkSpawnStrategy::CloseAndInView => {}
-                ChunkSpawnStrategy::Distance(_) => {}
             }
         }
     }
@@ -253,9 +236,7 @@ where
         mut ev_chunk_will_despawn: EventWriter<ChunkWillDespawn<C>>,
     ) {
         let spawning_max_distance = configuration.spawning_max_distance() as i32;
-        let spawning_max_distance_squared = spawning_max_distance.pow(2);
         let spawning_min_distance = configuration.spawning_min_distance() as i32;
-        let spawning_min_distance_squared = spawning_min_distance.pow(2);
 
         let (_, cam_gtf) = match camera_info.get_single() {
             Ok(info) => info,
@@ -271,8 +252,6 @@ where
         let chunks_to_remove = {
             let mut remove = Vec::with_capacity(1000);
             for (chunk, view_visibility) in all_chunks.iter() {
-                let dist_squared = chunk.position.distance_squared(chunk_at_camera);
-
                 // Determine if the chunk should be culled based on despawn strategy
                 let should_be_culled = match configuration.chunk_despawn_strategy() {
                     ChunkDespawnStrategy::Distance(_) => false,
@@ -286,19 +265,21 @@ where
                     }
                 };
 
+                let chunk_position = chunk.position;
+                // Calculate the Chebyshev distance between the chunk and the camera
+                let dist = (chunk_position - chunk_at_camera).abs();
+                let chebyshev_dist = dist.x.max(dist.y).max(dist.z);
+
+                // Check if chunk is within the spawning distance range
+                let chebyshev_approves = chebyshev_dist < spawning_min_distance
+                    || chebyshev_dist > spawning_max_distance;
+
                 // Despawn if:
                 // 1. Should be culled based on despawn strategy.
                 // 2. Outside the spawning_max_distance.
                 // 3. Inside the spawning_min_distance (if desired).
-                if should_be_culled
-                    || dist_squared > spawning_max_distance_squared + 1
-                    || (dist_squared < spawning_min_distance_squared && spawning_min_distance > 0)
-                {
+                if should_be_culled || chebyshev_approves {
                     remove.push(chunk);
-                    //info!(
-                    //    "Despawning chunk at position: {:?}, Distance squared: {}",
-                    //  chunk.position, dist_squared
-                    //);
                 }
             }
             remove

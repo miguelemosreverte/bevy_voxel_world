@@ -1,90 +1,96 @@
 use bevy::prelude::*;
 use bevy::{
     app::AppExit,
-    input::{keyboard::KeyCode, mouse::MouseMotion, ButtonInput},
+    input::{keyboard::KeyCode, ButtonInput},
     pbr::CascadeShadowConfigBuilder,
-    utils::HashMap,
     window::CursorGrabMode,
 };
+use bevy_fn_plugin::bevy_plugin;
 use bevy_voxel_world::prelude::*;
 
+mod camera;
 mod voxel;
-
+use camera::*;
 use voxel::get_voxel_fn;
 
-// WorldWrapper struct
-#[derive(Resource, Clone)]
-pub struct WorldWrapper<C: VoxelWorldConfig + 'static> {
-    pub id: String,
-    pub config: C,
+#[derive(Resource, Clone, Copy)]
+struct VoxelWorldConfiguration {
+    scale: f32,
+    height_scale: f32,
+    height_minus: f32,
+    from: u32,
+    to: u32,
 }
 
-impl<C: VoxelWorldConfig + Default + 'static> Default for WorldWrapper<C> {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            config: C::default(),
-        }
-    }
-}
+const HIGH_DETAIL_CONFIG: VoxelWorldConfiguration = VoxelWorldConfiguration {
+    scale: 1.0,
+    height_scale: 1.0,
+    height_minus: 1.0,
+    from: 0,
+    to: 3,
+};
 
-impl<C: VoxelWorldConfig + 'static> VoxelWorldConfig for WorldWrapper<C> {
-    fn spawning_min_distance(&self) -> u32 {
-        self.config.spawning_min_distance()
-    }
-    fn spawning_max_distance(&self) -> u32 {
-        self.config.spawning_max_distance()
-    }
-    fn voxel_lookup_delegate(&self) -> VoxelLookupDelegate {
-        self.config.voxel_lookup_delegate()
-    }
-    fn chunk_despawn_strategy(&self) -> ChunkDespawnStrategy {
-        self.config.chunk_despawn_strategy()
-    }
-    fn chunk_spawn_strategy(&self) -> ChunkSpawnStrategy {
-        self.config.chunk_spawn_strategy()
-    }
-    fn debug_draw_chunks(&self) -> bool {
-        self.config.debug_draw_chunks()
-    }
-}
+const LOW_DETAIL_CONFIGS: [VoxelWorldConfiguration; 4] = [
+    VoxelWorldConfiguration {
+        scale: 2.0,
+        height_scale: 0.5,
+        height_minus: 1.0,
+        from: 4,
+        to: 6,
+    },
+    VoxelWorldConfiguration {
+        scale: 4.0,
+        height_scale: 1.0,
+        height_minus: 1.0,
+        from: 7,
+        to: 10,
+    },
+    VoxelWorldConfiguration {
+        scale: 8.0,
+        height_scale: 1.0,
+        height_minus: 1.0,
+        from: 11,
+        to: 15,
+    },
+    VoxelWorldConfiguration {
+        scale: 16.0,
+        height_scale: 1.0,
+        height_minus: 1.0,
+        from: 15,
+        to: 20,
+    },
+];
 
-// HighDetailWorld implementation
-#[derive(Resource, Clone)]
-pub struct HighDetailWorld {
-    pub scale: f64,
-    pub height_scale: f64,
-}
-
-impl HighDetailWorld {
-    pub const fn new() -> Self {
-        Self {
-            scale: 1.0,
-            height_scale: 1.0,
-        }
-    }
-}
-
-impl Default for HighDetailWorld {
+impl Default for VoxelWorldConfiguration {
     fn default() -> Self {
         Self {
             scale: 1.0,
             height_scale: 1.0,
+            height_minus: 0.0,
+            from: 6,
+            to: 7,
         }
     }
 }
 
-impl VoxelWorldConfig for HighDetailWorld {
+impl VoxelWorldConfig for VoxelWorldConfiguration {
     fn spawning_min_distance(&self) -> u32 {
-        0
+        self.from
+    }
+    fn spawning_distance(&self) -> u32 {
+        self.from
     }
     fn spawning_max_distance(&self) -> u32 {
-        4
+        self.to
     }
     fn voxel_lookup_delegate(&self) -> VoxelLookupDelegate {
-        let scale = self.scale as f32;
-        let height_scale = self.height_scale as f32;
-        Box::new(move |pos| Box::new(move |pos| get_voxel_fn(1.0, 1.0, 0.0)(pos, 0)))
+        let scale = self.scale as f64;
+        let height_scale = self.height_scale as f64;
+        let height_minus = self.height_minus as f64;
+        Box::new(move |_chunk_pos| {
+            let mut voxel_fn = get_voxel_fn(scale, height_scale, height_minus);
+            Box::new(move |pos| voxel_fn(pos, 0))
+        })
     }
     fn chunk_despawn_strategy(&self) -> ChunkDespawnStrategy {
         ChunkDespawnStrategy::Distance(7)
@@ -97,193 +103,91 @@ impl VoxelWorldConfig for HighDetailWorld {
     }
 }
 
-// LowDetailWorld implementation
-#[derive(Resource, Clone)]
-pub struct LowDetailWorld {
-    pub scale: f64,
-    pub height_scale: f64,
-    pub height_minus: f64,
+fn create_world_plugin(_name: &str, config: VoxelWorldConfiguration) -> impl Plugin {
+    VoxelWorldPlugin::with_config(config)
 }
 
-impl Default for LowDetailWorld {
-    fn default() -> Self {
-        Self {
-            scale: 1.0,
-            height_scale: 1.0,
-            height_minus: 0.0,
-        }
-    }
+// High detail world plugin
+#[bevy_plugin]
+fn HighDetailWorldPlugin(app: &mut App) {
+    app.add_plugins(VoxelWorldPlugin::<VoxelWorldConfiguration>::with_config(
+        HIGH_DETAIL_CONFIG,
+    ));
 }
 
-impl VoxelWorldConfig for LowDetailWorld {
-    fn spawning_min_distance(&self) -> u32 {
-        1
-    }
-    fn spawning_max_distance(&self) -> u32 {
-        3
-    }
-    fn voxel_lookup_delegate(&self) -> VoxelLookupDelegate {
-        let scale = self.scale as f32;
-        let height_scale = self.height_scale as f32;
-        Box::new(move |pos| Box::new(move |pos| get_voxel_fn(1.0, 1.0, 0.0)(pos, 0)))
-    }
-    fn chunk_despawn_strategy(&self) -> ChunkDespawnStrategy {
-        ChunkDespawnStrategy::Distance(5)
-    }
-    fn chunk_spawn_strategy(&self) -> ChunkSpawnStrategy {
-        ChunkSpawnStrategy::Distance(3)
-    }
-    fn debug_draw_chunks(&self) -> bool {
-        false
-    }
+// Low detail world plugins
+#[bevy_plugin]
+fn LowDetailWorld1Plugin(app: &mut App) {
+    app.add_plugins(create_world_plugin("low_detail_1", LOW_DETAIL_CONFIGS[0]));
 }
 
-// Helper function for noise generation
-fn noise_2d(x: f32, y: f32) -> f32 {
-    (x.sin() * y.cos() + y.sin() * x.cos()).sin() * 0.5
+#[bevy_plugin]
+fn LowDetailWorld2Plugin(app: &mut App) {
+    app.add_plugins(create_world_plugin("low_detail_2", LOW_DETAIL_CONFIGS[1]));
 }
 
-// WalkingCamera component
-#[derive(Component)]
-pub struct WalkingCamera {
-    pub speed: f32,
-    pub sensitivity: f32,
+#[bevy_plugin]
+fn LowDetailWorld3Plugin(app: &mut App) {
+    app.add_plugins(create_world_plugin("low_detail_3", LOW_DETAIL_CONFIGS[2]));
 }
 
-impl Default for WalkingCamera {
-    fn default() -> Self {
-        Self {
-            speed: 12.0,
-            sensitivity: 0.00012,
-        }
-    }
-}
-
-// Plugin creation helper
-fn create_world_plugin<C: VoxelWorldConfig + Default + 'static>(
-    id: &str,
-    config: C,
-) -> impl Plugin {
-    let wrapped_config = WorldWrapper {
-        id: id.to_string(),
-        config,
-    };
-    VoxelWorldPlugin::<WorldWrapper<C>>::with_config(wrapped_config)
-}
-
-// Define chunk stats text identifiers
-#[derive(Component)]
-enum ChunkStatsText {
-    HighDetail,
-    LowDetail,
+#[bevy_plugin]
+fn LowDetailWorld4Plugin(app: &mut App) {
+    app.add_plugins(create_world_plugin("low_detail_4", LOW_DETAIL_CONFIGS[3]));
 }
 
 fn main() {
-    // Create the plugins
-    let high_detail_world =
-        VoxelWorldPlugin::<HighDetailWorld>::with_config(HighDetailWorld::new());
-    let low_detail_world = create_world_plugin("low_detail_1", LowDetailWorld::default());
-
-    // Create a vector of boxed plugins
-    let PLUGINS = vec![low_detail_world];
-    fn setup(mut commands: Commands) {
-        // Set background color
-        commands.insert_resource(ClearColor(Color::rgb(0.5, 0.8, 1.0)));
-        let camera_entity = commands
-            .spawn((
-                Camera3dBundle {
-                    transform: Transform::from_xyz(0.0, 160.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
-                    ..default()
-                },
-                WalkingCamera::default(),
-            ))
-            .id();
-        // Spawn Camera for High-Detail and Low-Detail Worlds
-        commands
-            .entity(camera_entity)
-            .insert(VoxelWorldCamera::<HighDetailWorld>::default())
-            .insert(VoxelWorldCamera::<WorldWrapper<LowDetailWorld>>::default());
-
-        // Spawn Directional Light
-        let cascade_shadow_config = CascadeShadowConfigBuilder::default().build();
-        commands.spawn(DirectionalLightBundle {
-            directional_light: DirectionalLight {
-                color: Color::srgb(0.98, 0.95, 0.82),
-                shadows_enabled: true,
-                ..default()
-            },
-            transform: Transform::from_xyz(0.0, 0.0, 0.0)
-                .looking_at(Vec3::new(-0.15, -0.1, 0.15), Vec3::Y),
-            cascade_shadow_config,
-            ..default()
-        });
-        // Insert Ambient Light
-        commands.insert_resource(AmbientLight {
-            color: Color::srgb(0.98, 0.95, 0.82),
-            brightness: 100.0,
-        });
-    }
-
-    let mut app = App::new();
-    app.add_plugins(DefaultPlugins)
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(HighDetailWorldPlugin)
+        .add_plugins(LowDetailWorld1Plugin)
+        .add_plugins(LowDetailWorld2Plugin)
+        .add_plugins(LowDetailWorld3Plugin)
+        .add_plugins(LowDetailWorld4Plugin)
         .add_systems(Startup, (setup, grab_mouse))
-        .add_systems(Update, (walking_camera, exit_on_esc));
-
-    app.add_plugins(high_detail_world);
-
-    for plugin in PLUGINS.into_iter() {
-        //app.add_plugins(plugin);
-    }
-
-    app.run();
+        .add_systems(Update, (fly_camera, exit_on_esc))
+        .insert_resource(ClearColor(Color::srgb(0.5, 0.8, 1.0)))
+        .run();
 }
 
-// Camera control systems
+fn setup(mut commands: Commands) {
+    let camera_entity = commands
+        .spawn((
+            Camera3dBundle {
+                transform: Transform::from_xyz(0.0, 160.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
+                ..default()
+            },
+            FlyCamera::default(),
+        ))
+        .id();
+
+    commands
+        .entity(camera_entity)
+        .insert(VoxelWorldCamera::<VoxelWorldConfiguration>::default());
+
+    let cascade_shadow_config = CascadeShadowConfigBuilder::default().build();
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            color: Color::srgb(0.98, 0.95, 0.82),
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(0.0, 0.0, 0.0)
+            .looking_at(Vec3::new(-0.15, -0.1, 0.15), Vec3::Y),
+        cascade_shadow_config,
+        ..default()
+    });
+
+    commands.insert_resource(AmbientLight {
+        color: Color::srgb(0.98, 0.95, 0.82),
+        brightness: 100.0,
+    });
+}
+
 fn grab_mouse(mut windows: Query<&mut Window>) {
     let mut window = windows.single_mut();
     window.cursor.grab_mode = CursorGrabMode::Locked;
     window.cursor.visible = false;
-}
-
-fn walking_camera(
-    time: Res<Time>,
-    mut camera_query: Query<(&WalkingCamera, &mut Transform)>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut mouse_motion: EventReader<MouseMotion>,
-) {
-    for (camera, mut transform) in camera_query.iter_mut() {
-        let mut velocity = Vec3::ZERO;
-        let local_z = transform.local_z();
-        let forward = -Vec3::new(local_z.x, 0., local_z.z);
-        let right = Vec3::new(local_z.z, 0., -local_z.x);
-
-        for key in keyboard.get_pressed() {
-            match key {
-                KeyCode::KeyW => velocity += forward,
-                KeyCode::KeyS => velocity -= forward,
-                KeyCode::KeyA => velocity -= right,
-                KeyCode::KeyD => velocity += right,
-                KeyCode::Space => velocity += Vec3::Y,
-                KeyCode::ShiftLeft => velocity -= Vec3::Y,
-                _ => (),
-            }
-        }
-
-        velocity = velocity.normalize_or_zero();
-        transform.translation += velocity * time.delta_seconds() * camera.speed;
-
-        let mut mouse_delta = Vec2::ZERO;
-        for event in mouse_motion.read() {
-            mouse_delta += event.delta;
-        }
-        if mouse_delta != Vec2::ZERO {
-            let (mut yaw, mut pitch, _) = transform.rotation.to_euler(EulerRot::YXZ);
-            yaw -= mouse_delta.x * camera.sensitivity;
-            pitch -= mouse_delta.y * camera.sensitivity;
-            pitch = pitch.clamp(-1.54, 1.54);
-            transform.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0);
-        }
-    }
 }
 
 fn exit_on_esc(keyboard: Res<ButtonInput<KeyCode>>, mut app_exit_events: EventWriter<AppExit>) {

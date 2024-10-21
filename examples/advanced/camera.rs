@@ -1,18 +1,12 @@
+use crate::VoxelWorld;
 use bevy::{
     app::AppExit,
     input::{keyboard::KeyCode, mouse::MouseMotion, ButtonInput},
     pbr::CascadeShadowConfigBuilder,
     prelude::*,
-    utils::HashMap,
     window::CursorGrabMode,
 };
-use std::sync::{Arc, Mutex};
-
-use crate::world::HighDetailWorld;
-use bevy::prelude::*;
-use bevy_voxel_world::prelude::*;
-use bevy_voxel_world::prelude::*;
-use noise::{HybridMulti, NoiseFn, Perlin}; // Import MainWorld from the world module
+use bevy_voxel_world::prelude::WorldVoxel;
 
 #[derive(Component)]
 pub struct WalkingCamera {
@@ -37,12 +31,12 @@ impl Default for WalkingCamera {
     }
 }
 
-pub fn walking_camera(
+pub fn walking_camera<HighDetailWorld: bevy_voxel_world::prelude::VoxelWorldConfig>(
     time: Res<Time>,
     mut mouse_motion_events: EventReader<MouseMotion>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut query: Query<(&mut Transform, &mut WalkingCamera), With<Camera>>,
-    mut voxel_world: VoxelWorld<HighDetailWorld>,
+    voxel_world: VoxelWorld<HighDetailWorld>,
 ) {
     let (mut transform, mut camera) = query.single_mut();
     // Handle mouse look
@@ -127,6 +121,15 @@ pub fn walking_camera(
 pub struct FlyCamera {
     speed: f32,
     sensitivity: f32,
+}
+
+impl Default for FlyCamera {
+    fn default() -> Self {
+        Self {
+            speed: 50.0,
+            sensitivity: 0.002,
+        }
+    }
 }
 
 pub fn fly_camera(
