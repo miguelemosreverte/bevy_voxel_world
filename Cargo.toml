@@ -22,7 +22,8 @@ bevy = { version = "0.14", features = [
     "bevy_asset",
     "bevy_pbr",
 ] }
-bevy_fn_plugin = "0.1.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
 block-mesh = "0.2.0"
 ndshape = "0.3.0"
 futures-lite = "2.3.0"
