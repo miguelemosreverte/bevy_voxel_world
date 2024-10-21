@@ -172,18 +172,3 @@ pub fn fly_camera(
 
     transform.translation += velocity * camera.speed * time.delta_seconds();
 }
-
-pub fn grab_mouse(mut windows: Query<&mut Window>) {
-    let mut window = windows.single_mut();
-    window.cursor.visible = false;
-    window.cursor.grab_mode = CursorGrabMode::Locked;
-}
-
-pub fn exit_on_esc(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut app_exit_events: EventWriter<AppExit>,
-) {
-    if keyboard_input.just_pressed(KeyCode::Escape) {
-        app_exit_events.send(AppExit::default());
-    }
-}
